@@ -1,0 +1,236 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $SrWindow: Adw.ApplicationWindow {
+  default-width: 1100;
+  default-height: 760;
+  width-request: 360;
+  height-request: 294;
+  title: _("App Showroom");
+
+  Adw.Breakpoint {
+    condition ("max-width: 720sp")
+
+    setters {
+      split_view.collapsed: true;
+    }
+  }
+
+  content: Adw.NavigationSplitView split_view {
+    min-sidebar-width: 220;
+    max-sidebar-width: 280;
+
+    sidebar: Adw.NavigationPage {
+      title: _("App Showroom");
+      tag: "sidebar";
+
+      child: Adw.ToolbarView {
+        [top]
+        Adw.HeaderBar {
+          [end]
+          MenuButton {
+            icon-name: "open-menu-symbolic";
+            menu-model: primary_menu;
+            primary: true;
+            tooltip-text: _("Main Menu");
+          }
+        }
+
+        content: ScrolledWindow {
+          hscrollbar-policy: never;
+
+          child: ListBox sidebar_list {
+            row-activated => $on_sidebar_row_activated(template);
+
+            styles [
+              "navigation-sidebar",
+            ]
+          };
+        };
+      };
+    };
+
+    content: Adw.NavigationPage content_page {
+      title: _("All Apps");
+      tag: "content";
+
+      child: Adw.ToolbarView {
+        [top]
+        Adw.HeaderBar {
+          [end]
+          ToggleButton search_button {
+            icon-name: "system-search-symbolic";
+            tooltip-text: _("Search");
+            active: bind search_bar.search-mode-enabled bidirectional;
+          }
+
+          [end]
+          Button {
+            icon-name: "view-refresh-symbolic";
+            tooltip-text: _("Reload");
+            action-name: "win.reload";
+          }
+        }
+
+        [top]
+        SearchBar search_bar {
+          notify::search-mode-enabled => $on_search_mode_changed(template);
+
+          child: Adw.Clamp {
+            maximum-size: 480;
+            hexpand: true;
+
+            child: SearchEntry search_entry {
+              placeholder-text: _("Search apps");
+              search-changed => $on_search_changed(template);
+              stop-search => $on_search_stopped(template);
+              activate => $on_search_activated(template);
+            };
+          };
+        }
+
+        content: Stack stack {
+          transition-type: crossfade;
+
+          StackPage {
+            name: "loading";
+
+            child: Adw.StatusPage {
+              title: _("Looking for Apps");
+              description: _("Reading desktop files, packages and standalone apps");
+
+              child: Adw.Spinner {
+                width-request: 48;
+                height-request: 48;
+                halign: center;
+              };
+            };
+          }
+
+          StackPage {
+            name: "apps";
+
+            child: ScrolledWindow apps_scroll {
+              hscrollbar-policy: never;
+
+              child: Viewport {
+                scroll-to-focus: true;
+
+                child: Adw.Clamp {
+                  maximum-size: 1400;
+                  tightening-threshold: 1100;
+
+                  child: Box sections_box {
+                    orientation: vertical;
+                    spacing: 30;
+                    margin-top: 18;
+                    margin-bottom: 30;
+                    margin-start: 18;
+                    margin-end: 18;
+                  };
+                };
+              };
+            };
+          }
+
+          StackPage {
+            name: "packages";
+
+            child: Box {
+              orientation: vertical;
+
+              Adw.Clamp {
+                maximum-size: 1400;
+                tightening-threshold: 1100;
+
+                child: Box {
+                  spacing: 12;
+                  margin-top: 12;
+                  margin-start: 18;
+                  margin-end: 18;
+
+                  Adw.ToggleGroup package_filter {
+                    active-name: "all";
+                    notify::active-name => $on_package_filter_changed(template);
+
+                    styles [
+                      "round",
+                    ]
+
+                    Adw.Toggle {
+                      name: "all";
+                      label: _("All");
+                    }
+
+                    Adw.Toggle {
+                      name: "manual";
+                      label: _("Manually Installed");
+                    }
+                  }
+
+                  Label packages_count {
+                    hexpand: true;
+                    xalign: 1;
+
+                    styles [
+                      "dim-label",
+                      "numeric",
+                    ]
+                  }
+                };
+              }
+
+              ScrolledWindow {
+                vexpand: true;
+                hscrollbar-policy: never;
+
+                child: Adw.ClampScrollable {
+                  maximum-size: 1400;
+                  tightening-threshold: 1100;
+
+                  child: GridView package_grid {
+                    min-columns: 1;
+                    max-columns: 4;
+                    single-click-activate: true;
+                    margin-start: 12;
+                    margin-end: 12;
+                    margin-bottom: 12;
+                    activate => $on_package_activated(template);
+
+                    styles [
+                      "app-grid",
+                    ]
+                  };
+                };
+              }
+            };
+          }
+
+          StackPage {
+            name: "empty";
+
+            child: Adw.StatusPage empty_page {
+              icon-name: "edit-find-symbolic";
+              title: _("No Results Found");
+              description: _("Try a different search");
+            };
+          }
+        };
+      };
+    };
+  };
+}
+
+menu primary_menu {
+  section {
+    item {
+      label: _("_Keyboard Shortcuts");
+      action: "app.shortcuts";
+    }
+
+    item {
+      label: _("_About App Showroom");
+      action: "app.about";
+    }
+  }
+}

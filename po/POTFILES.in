@@ -1,0 +1,12 @@
+data/io.github.martins.AppShowroom.desktop.in.in
+data/io.github.martins.AppShowroom.gschema.xml
+data/io.github.martins.AppShowroom.metainfo.xml.in.in
+src/sr-app.c
+src/sr-application.c
+src/sr-app-scanner.c
+src/sr-details-dialog.blp
+src/sr-details-dialog.c
+src/sr-package.c
+src/sr-standalone-scanner.c
+src/sr-window.blp
+src/sr-window.c

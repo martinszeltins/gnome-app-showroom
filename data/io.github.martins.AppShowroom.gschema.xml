@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="app-showroom">
+  <schema id="io.github.martins.AppShowroom" path="/io/github/martins/AppShowroom/">
+    <key name="window-width" type="i">
+      <default>1100</default>
+      <summary>Window width</summary>
+    </key>
+    <key name="window-height" type="i">
+      <default>760</default>
+      <summary>Window height</summary>
+    </key>
+    <key name="window-maximized" type="b">
+      <default>false</default>
+      <summary>Window maximized</summary>
+    </key>
+    <key name="last-page" type="s">
+      <default>'all'</default>
+      <summary>Last selected sidebar page</summary>
+    </key>
+    <key name="standalone-dirs" type="as">
+      <default>['~/Applications', '~/AppImages', '/opt']</default>
+      <summary>Folders scanned for standalone apps</summary>
+      <description>Every entry in these folders is probed for AppImages, app bundles, command-line tool folders and single executables. Entries owned by a system package are skipped.</description>
+    </key>
+    <key name="appimage-only-dirs" type="as">
+      <default>['~/.local/bin']</default>
+      <summary>Folders scanned for AppImages only</summary>
+    </key>
+  </schema>
+</schemalist>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/io/github/martins/AppShowroom">
+    <file preprocess="xml-stripblanks">sr-app-card.ui</file>
+    <file preprocess="xml-stripblanks">sr-details-dialog.ui</file>
+    <file preprocess="xml-stripblanks">sr-window.ui</file>
+    <file>style.css</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/sr-flatpak-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/sr-snap-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/sr-debian-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/sr-standalone-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/sr-appimage.svg</file>
+  </gresource>
+</gresources>

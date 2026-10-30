@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>@APP_ID@</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>App Showroom</name>
+  <summary>Browse installed apps by where they came from</summary>
+  <description>
+    <p>
+      App Showroom lists every app installed on your computer, grouped by how
+      it was installed: Flatpak, Debian packages, Snap, standalone apps such as
+      AppImages, and everything else.
+    </p>
+    <p>
+      It can also list every installed system package, and shows where each
+      app lives, its desktop file and its installation type.
+    </p>
+  </description>
+  <developer id="io.github.martins">
+    <name>Martins</name>
+  </developer>
+  <url type="homepage">https://github.com/martinszeltins/gnome-app-showroom</url>
+  <launchable type="desktop-id">@APP_ID@.desktop</launchable>
+  <content_rating type="oars-1.1" />
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+    <control>touch</control>
+  </supports>
+  <releases>
+    <release version="0.1.0" date="2026-10-30">
+      <description>
+        <p>First release.</p>
+      </description>
+    </release>
+  </releases>
+</component>

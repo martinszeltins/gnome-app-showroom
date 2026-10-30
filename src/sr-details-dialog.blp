@@ -1,0 +1,122 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $SrDetailsDialog: Adw.Dialog {
+  content-width: 580;
+  content-height: 720;
+  title: _("Details");
+
+  child: Adw.ToastOverlay toast_overlay {
+    child: Adw.ToolbarView {
+      [top]
+      Adw.HeaderBar {
+        show-title: false;
+      }
+
+      content: Adw.PreferencesPage {
+        Adw.PreferencesGroup {
+          Box {
+            orientation: vertical;
+            spacing: 6;
+            halign: center;
+
+            styles [
+              "details-header",
+            ]
+
+            Image icon {
+              pixel-size: 128;
+              margin-bottom: 12;
+              accessible-role: presentation;
+
+              styles [
+                "icon-dropshadow",
+              ]
+            }
+
+            Label name_label {
+              wrap: true;
+              justify: center;
+
+              styles [
+                "title-1",
+              ]
+            }
+
+            Label comment_label {
+              wrap: true;
+              justify: center;
+
+              styles [
+                "dim-label",
+              ]
+            }
+
+            Label pill {
+              halign: center;
+              margin-top: 6;
+
+              styles [
+                "source-pill",
+                "details-pill",
+              ]
+            }
+
+            Box {
+              halign: center;
+              spacing: 12;
+              margin-top: 18;
+              homogeneous: true;
+
+              Button open_location_button {
+                label: _("Open _Location");
+                use-underline: true;
+                clicked => $on_open_location_clicked(template);
+
+                styles [
+                  "pill",
+                  "suggested-action",
+                ]
+              }
+
+              Button open_desktop_button {
+                label: _("Open _Desktop File");
+                use-underline: true;
+                clicked => $on_open_desktop_clicked(template);
+
+                styles [
+                  "pill",
+                ]
+              }
+            }
+          }
+        }
+
+        Adw.PreferencesGroup description_group {
+          title: _("Description");
+          visible: false;
+
+          Label description_label {
+            wrap: true;
+            xalign: 0;
+            selectable: true;
+          }
+        }
+
+        Adw.PreferencesGroup info_group {
+          title: _("Details");
+        }
+
+        Adw.PreferencesGroup files_group {
+          title: _("Installed Files");
+          visible: false;
+
+          Adw.ExpanderRow files_row {
+            title: _("Show All Files");
+            notify::expanded => $on_files_expanded(template);
+          }
+        }
+      };
+    };
+  };
+}
