@@ -13,10 +13,6 @@
       <default>false</default>
       <summary>Window maximized</summary>
     </key>
-    <key name="last-page" type="s">
-      <default>'all'</default>
-      <summary>Last selected sidebar page</summary>
-    </key>
     <key name="standalone-dirs" type="as">
       <default>['~/Applications', '~/AppImages', '/opt']</default>
       <summary>Folders scanned for standalone apps</summary>

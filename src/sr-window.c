@@ -666,7 +666,6 @@ on_sidebar_row_activated (SrWindow *self, GtkListBoxRow *row)
     const char *page = g_object_get_data (G_OBJECT (row), "page");
 
     g_set_str (&self->page, page);
-    g_settings_set_string (self->settings, "last-page", page);
 
     /* search-changed is delayed, so apply the cleared query right away */
     gtk_editable_set_text (GTK_EDITABLE (self->search_entry), "");
@@ -988,8 +987,6 @@ sr_window_class_init (SrWindowClass *klass)
 static void
 sr_window_init (SrWindow *self)
 {
-    g_autofree char *last_page = NULL;
-
     g_type_ensure (SR_TYPE_APP_CARD);
 
     self->apps = g_list_store_new (SR_TYPE_APP);
@@ -1018,8 +1015,7 @@ sr_window_init (SrWindow *self)
     gtk_search_bar_set_key_capture_widget (self->search_bar, GTK_WIDGET (self));
     gtk_search_bar_connect_entry (self->search_bar, GTK_EDITABLE (self->search_entry));
 
-    last_page = g_settings_get_string (self->settings, "last-page");
-    select_page (self, last_page);
+    select_page (self, PAGE_ALL);
 
     g_signal_connect_object (self->settings, "changed::standalone-dirs", G_CALLBACK (settings_dirs_changed_cb), self,
                              G_CONNECT_DEFAULT);
