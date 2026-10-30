@@ -16,6 +16,7 @@
 #include "sr-app.h"
 #include "sr-catalog.h"
 #include "sr-details-dialog.h"
+#include "sr-host.h"
 #include "sr-package.h"
 #include "sr-utils.h"
 #include "sr-window.h"
@@ -80,6 +81,7 @@ struct _SrWindow {
 
     char *page;
     GPtrArray *monitors;
+    GPtrArray *path_dirs;
     guint reload_id;
     gboolean loaded;
     gboolean reload_pending;
@@ -91,6 +93,7 @@ static void update_view (SrWindow *self);
 static void load_catalog (SrWindow *self);
 static void select_page (SrWindow *self, const char *page);
 static void on_search_changed (SrWindow *self);
+static void setup_monitors (SrWindow *self);
 
 static gboolean
 is_packages_page (SrWindow *self)
@@ -791,6 +794,10 @@ catalog_loaded_cb (GObject *source, GAsyncResult *result, gpointer user_data)
     splice_store (self->apps, catalog->apps);
     splice_store (self->packages, catalog->packages);
     update_package_sources (self);
+
+    g_clear_pointer (&self->path_dirs, g_ptr_array_unref);
+    self->path_dirs = g_ptr_array_ref (catalog->path_dirs);
+    setup_monitors (self);
     gtk_filter_changed (self->manual_filter, GTK_FILTER_CHANGE_DIFFERENT);
     self->loaded = TRUE;
     update_view (self);
@@ -851,16 +858,26 @@ setup_monitors (SrWindow *self)
     g_auto(GStrv) appimage_only_dirs = g_settings_get_strv (self->settings, "appimage-only-dirs");
     g_autoptr(GPtrArray) paths = NULL;
 
+    g_autoptr(GHashTable) seen = g_hash_table_new (g_str_hash, g_str_equal);
+
     g_clear_pointer (&self->monitors, g_ptr_array_unref);
     self->monitors = g_ptr_array_new_with_free_func (g_object_unref);
 
     paths = sr_catalog_get_watched_paths ((const char *const *) standalone_dirs,
                                           (const char *const *) appimage_only_dirs);
+    for (guint i = 0; self->path_dirs != NULL && i < self->path_dirs->len; i++)
+        g_ptr_array_add (paths, sr_host_to_sandbox_path (g_ptr_array_index (self->path_dirs, i)));
+
     for (guint i = 0; i < paths->len; i++) {
-        g_autoptr(GFile) file = g_file_new_for_path (g_ptr_array_index (paths, i));
+        g_autoptr(GFile) file = NULL;
         g_autoptr(GError) error = NULL;
         GFileMonitor *monitor;
 
+        if (g_hash_table_contains (seen, g_ptr_array_index (paths, i)))
+            continue;
+        g_hash_table_add (seen, g_ptr_array_index (paths, i));
+
+        file = g_file_new_for_path (g_ptr_array_index (paths, i));
         monitor = g_file_monitor (file, G_FILE_MONITOR_WATCH_MOVES, NULL, &error);
         if (monitor == NULL) {
             g_debug ("Not watching %s: %s", (const char *) g_ptr_array_index (paths, i), error->message);
@@ -940,6 +957,7 @@ sr_window_finalize (GObject *object)
     g_clear_object (&self->package_search_filter);
     g_clear_object (&self->manual_filter);
     g_clear_pointer (&self->source_groups, g_array_unref);
+    g_clear_pointer (&self->path_dirs, g_ptr_array_unref);
     g_free (self->query);
     g_free (self->page);
 

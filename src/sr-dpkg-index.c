@@ -29,6 +29,8 @@ struct _SrDpkgIndex {
 };
 
 typedef struct {
+    char *named_bin;
+    char *named_file;
     char *bin;
     char *opt;
     char *so;
@@ -41,6 +43,8 @@ typedef struct {
 static void
 list_scan_clear (ListScan *scan)
 {
+    g_free (scan->named_bin);
+    g_free (scan->named_file);
     g_free (scan->bin);
     g_free (scan->opt);
     g_free (scan->so);
@@ -173,14 +177,10 @@ scan_list_file (SrDpkgIndex *self, SrPackage *package, GCancellable *cancellable
         if (is_direct_child (line, "/usr/bin") || is_direct_child (line, "/usr/sbin") || is_direct_child (line, "/bin")
             || is_direct_child (line, "/sbin") || is_direct_child (line, "/usr/games")) {
             package->has_binaries = TRUE;
-            /* A package can ship several programs (gcc ships c89-gcc first),
-             * so the one named after the package wins */
-            if (g_str_equal (strrchr (line, '/') + 1, package->name)) {
-                g_free (scan.bin);
+            if (scan.named_bin == NULL && g_str_equal (strrchr (line, '/') + 1, package->name))
+                scan.named_bin = g_strdup (line);
+            else if (scan.bin == NULL)
                 scan.bin = g_strdup (line);
-            } else if (scan.bin == NULL) {
-                scan.bin = g_strdup (line);
-            }
             g_hash_table_insert (self->owners, g_strdup (line), package);
             continue;
         }
@@ -190,6 +190,18 @@ scan_list_file (SrDpkgIndex *self, SrPackage *package, GCancellable *cancellable
                 scan.opt = g_strdup (line);
             g_hash_table_insert (self->owners, g_strdup (line), package);
             continue;
+        }
+
+        /* Programs that are not on PATH, like /usr/lib/systemd/systemd.
+         * dpkg lists folders too, so only accept executable regular files. */
+        if (scan.named_file == NULL && g_str_equal (strrchr (line, '/') + 1, package->name)
+            && (g_str_has_prefix (line, "/usr/lib/") || g_str_has_prefix (line, "/usr/libexec/")
+                || g_str_has_prefix (line, "/lib/"))) {
+            g_autofree char *sandbox_path = sr_host_to_sandbox_path (line);
+
+            if (g_file_test (sandbox_path, G_FILE_TEST_IS_REGULAR)
+                && g_file_test (sandbox_path, G_FILE_TEST_IS_EXECUTABLE))
+                scan.named_file = g_strdup (line);
         }
 
         score = icon_path_score (line);
@@ -212,7 +224,13 @@ scan_list_file (SrDpkgIndex *self, SrPackage *package, GCancellable *cancellable
         }
     }
 
-    if (scan.bin)
+    /* A package can ship several programs (gcc lists c89-gcc first), so one
+     * named after the package wins over whichever comes first */
+    if (scan.named_bin)
+        package->location = g_steal_pointer (&scan.named_bin);
+    else if (scan.named_file)
+        package->location = g_steal_pointer (&scan.named_file);
+    else if (scan.bin)
         package->location = g_steal_pointer (&scan.bin);
     else if (scan.opt)
         package->location = g_steal_pointer (&scan.opt);

@@ -542,6 +542,7 @@ scan_node_versions (GPtrArray *out, GPtrArray *prefixes)
     g_autofree char *nvm = home_path (".nvm", "versions", "node", NULL);
     g_autofree char *nvm_alias_path = home_path (".nvm", "alias", "default", NULL);
     g_autofree char *nvm_alias = sr_read_first_line (nvm_alias_path);
+    g_autofree char *nvm_script = home_path (".nvm", "nvm.sh", NULL);
     g_autofree char *volta = home_path (".volta", "tools", "image", "node", NULL);
     g_autofree char *volta_platform_path = home_path (".volta", "tools", "user", "platform.json", NULL);
     g_autofree char *mise = home_path (".local", "share", "mise", "installs", "node", NULL);
@@ -559,6 +560,16 @@ scan_node_versions (GPtrArray *out, GPtrArray *prefixes)
 
     scan_fnm (out, prefixes);
     scan_versions_dir (out, prefixes, nvm, "nvm", nvm_alias);
+
+    /* nvm is a shell function sourced from nvm.sh, not a program on PATH */
+    if (host_is_file (nvm_script)) {
+        g_autofree char *nvm_dir = home_path (".nvm", NULL);
+        SrPackage *package = add_package (out, SR_PACKAGE_MANAGER_NODE, "nvm", "nvm", NULL,
+                                          _("Node Version Manager, installs and switches Node.js versions"), nvm_dir);
+
+        package->homepage = g_strdup ("https://github.com/nvm-sh/nvm");
+        package->icon = themed_icon ("nvm", "text-x-script", NULL);
+    }
     scan_versions_dir (out, prefixes, volta, "volta", volta_default);
     scan_versions_dir (out, prefixes, mise, "mise", NULL);
     scan_versions_dir (out, prefixes, asdf, "asdf", NULL);
@@ -736,6 +747,60 @@ scan_pnpm (GPtrArray *out)
     for (guint i = 0; i < layouts->len; i++) {
         g_autofree char *dir = g_build_filename (global, g_ptr_array_index (layouts, i), NULL);
         scan_dependency_dir (out, SR_PACKAGE_MANAGER_PNPM, _("pnpm global"), dir, _("pnpm global packages"));
+    }
+}
+
+static void
+scan_yarn (GPtrArray *out)
+{
+    g_autofree char *global = home_path (".config", "yarn", "global", NULL);
+    g_autofree char *legacy = home_path (".yarn", "global", NULL);
+
+    scan_dependency_dir (out, SR_PACKAGE_MANAGER_YARN, NULL, global, _("yarn global packages"));
+    if (!host_is_dir (global))
+        scan_dependency_dir (out, SR_PACKAGE_MANAGER_YARN, NULL, legacy, _("yarn global packages"));
+}
+
+static void
+scan_composer (GPtrArray *out)
+{
+    g_autofree char *home = home_path (".config", "composer", NULL);
+    g_autofree char *installed = g_build_filename (home, "vendor", "composer", "installed.json", NULL);
+    g_autoptr(JsonParser) parser = json_parser_new ();
+    g_autofree char *contents = host_read (installed);
+    JsonNode *root;
+    JsonArray *packages = NULL;
+
+    if (contents == NULL || !json_parser_load_from_data (parser, contents, -1, NULL))
+        return;
+
+    /* Composer 2 wraps the list in {"packages": [...]}, Composer 1 does not */
+    root = json_parser_get_root (parser);
+    if (JSON_NODE_HOLDS_ARRAY (root)) {
+        packages = json_node_get_array (root);
+    } else if (JSON_NODE_HOLDS_OBJECT (root) && json_object_has_member (json_node_get_object (root), "packages")) {
+        JsonNode *node = json_object_get_member (json_node_get_object (root), "packages");
+
+        if (JSON_NODE_HOLDS_ARRAY (node))
+            packages = json_node_get_array (node);
+    }
+
+    for (guint i = 0; packages != NULL && i < json_array_get_length (packages); i++) {
+        JsonNode *node = json_array_get_element (packages, i);
+        JsonObject *object = JSON_NODE_HOLDS_OBJECT (node) ? json_node_get_object (node) : NULL;
+        const char *name = json_string (object, "name");
+        g_autofree char *location = NULL;
+        SrPackage *package;
+
+        if (name == NULL)
+            continue;
+
+        location = g_build_filename (home, "vendor", name, NULL);
+        package = add_package (out, SR_PACKAGE_MANAGER_COMPOSER, NULL, name, json_string (object, "version"),
+                               json_string (object, "description"), location);
+        package->homepage = g_strdup (json_string (object, "homepage"));
+        package->icon = themed_icon ("text-x-script", NULL);
+        sr_package_add_detail (package, _("Installed For"), _("composer global packages"), FALSE);
     }
 }
 
@@ -1075,31 +1140,149 @@ is_claimed_target (const char *target, const char *const *claimed_prefixes)
     return FALSE;
 }
 
-static void
-scan_loose_programs (GPtrArray *out, SrDpkgIndex *dpkg)
+typedef struct {
+    const char *name;
+    SrPackageManager manager;
+    const char *detail;
+    const char *summary;
+    const char *homepage;
+} KnownTool;
+
+/* Tools that install themselves with a curl script, so no package manager
+ * records them. Matched by program name in any scanned PATH folder. */
+static const KnownTool known_tools[] = {
+    { "fnm", SR_PACKAGE_MANAGER_NODE, "fnm",
+      N_("Fast Node Manager, an nvm alternative for installing and switching Node.js versions"),
+      "https://github.com/Schniz/fnm" },
+    { "volta", SR_PACKAGE_MANAGER_NODE, "volta", N_("JavaScript tool manager for Node.js versions and tools"),
+      "https://volta.sh" },
+    { "mise", SR_PACKAGE_MANAGER_MANUAL, "mise", N_("Version manager for Node.js, Python, Ruby and other tools"),
+      "https://mise.jdx.dev" },
+    { "asdf", SR_PACKAGE_MANAGER_MANUAL, "asdf", N_("Version manager for many languages and tools"),
+      "https://asdf-vm.com" },
+    { "rustup", SR_PACKAGE_MANAGER_RUST, "rustup", N_("The Rust toolchain installer"), "https://rustup.rs" },
+    { "uv", SR_PACKAGE_MANAGER_PYTHON, "uv", N_("Fast Python package and project manager"),
+      "https://docs.astral.sh/uv" },
+    { "pipx", SR_PACKAGE_MANAGER_PYTHON, "pipx", N_("Installs and runs Python apps in isolated environments"),
+      "https://pipx.pypa.io" },
+};
+
+static const KnownTool *
+find_known_tool (const char *name)
 {
-    g_autofree char *local_bin = home_path (".local", "bin", NULL);
-    g_autofree char *home_bin = home_path ("bin", NULL);
+    for (guint i = 0; i < G_N_ELEMENTS (known_tools); i++) {
+        if (g_str_equal (known_tools[i].name, name))
+            return &known_tools[i];
+    }
+
+    return NULL;
+}
+
+static gboolean
+has_package (GPtrArray *out, SrPackageGroup group, const char *name)
+{
+    for (guint i = 0; i < out->len; i++) {
+        SrPackage *package = g_ptr_array_index (out, i);
+
+        if (sr_package_get_group (package) == group && g_str_equal (package->name, name))
+            return TRUE;
+    }
+
+    return FALSE;
+}
+
+static char *
+pretty_dir (const char *dir)
+{
+    const char *home = g_get_home_dir ();
+
+    if (sr_file_has_prefix_dir (dir, home))
+        return g_strconcat ("~", dir + strlen (home), NULL);
+
+    return g_strdup (dir);
+}
+
+/* Folders whose programs other sources already list, or that only hold
+ * temporary shortcuts (fnm's per-shell links live in /run/user) */
+static gboolean
+is_skipped_path_dir (const char *dir, SrDpkgIndex *dpkg)
+{
+    const char *const system_dirs[] = { "/bin", "/sbin", "/lib", "/lib64", "/snap", "/run", "/proc", "/sys", "/etc",
+                                        "/var/lib/flatpak" };
+    g_autofree char *user_flatpak = home_path (".local", "share", "flatpak", NULL);
+
+    if (sr_file_has_prefix_dir (dir, "/usr") && !sr_file_has_prefix_dir (dir, "/usr/local"))
+        return TRUE;
+
+    for (guint i = 0; i < G_N_ELEMENTS (system_dirs); i++) {
+        if (sr_file_has_prefix_dir (dir, system_dirs[i]))
+            return TRUE;
+    }
+
+    if (sr_file_has_prefix_dir (dir, user_flatpak))
+        return TRUE;
+
+    if (g_str_has_prefix (dir, "/opt/")) {
+        const char *slash = strchr (dir + strlen ("/opt/"), '/');
+        g_autofree char *top = slash != NULL ? g_strndup (dir, slash - dir) : g_strdup (dir);
+
+        if (sr_dpkg_index_get_owner (dpkg, top) != NULL)
+            return TRUE;
+    }
+
+    return !host_is_dir (dir);
+}
+
+static void
+add_known_tool (GPtrArray *out, const KnownTool *tool, const char *host_path, const char *found_in)
+{
+    SrPackage *package;
+
+    if (has_package (out, sr_package_manager_get_group (tool->manager), tool->name))
+        return;
+
+    package = add_package (out, tool->manager, tool->detail, tool->name, NULL, _(tool->summary), host_path);
+    package->homepage = g_strdup (tool->homepage);
+    package->icon = themed_icon (tool->name, "application-x-executable", NULL);
+    sr_package_add_detail (package, _("Found In"), found_in, TRUE);
+}
+
+static void
+scan_loose_programs (GPtrArray *out, SrDpkgIndex *dpkg, const char *const *path_dirs, GPtrArray *scanned_dirs)
+{
     g_autofree char *cargo = home_path (".cargo", NULL);
     g_autofree char *bun = home_path (".bun", NULL);
+    g_autofree char *deno = home_path (".deno", NULL);
     g_autofree char *fnm = home_path (".local", "share", "fnm", NULL);
     g_autofree char *pnpm = home_path (".local", "share", "pnpm", NULL);
     g_autofree char *go = home_path ("go", NULL);
+    g_autofree char *composer = home_path (".config", "composer", NULL);
     g_autofree char *user_flatpak = home_path (".local", "share", "flatpak", NULL);
-    const char *dirs[] = { local_bin, home_bin, "/usr/local/bin", "/usr/local/sbin" };
     const char *claimed[] = {
         "/usr/bin", "/usr/sbin", "/bin", "/sbin", "/snap", "/var/lib/flatpak", user_flatpak,
-        cargo, bun, fnm, pnpm, go, NULL,
+        cargo, bun, deno, fnm, pnpm, go, composer, NULL,
     };
 
-    for (guint d = 0; d < G_N_ELEMENTS (dirs); d++) {
-        g_autoptr(GPtrArray) names = list_dir (dirs[d]);
+    for (guint d = 0; path_dirs != NULL && path_dirs[d] != NULL; d++) {
+        const char *dir = path_dirs[d];
+        gboolean dir_claimed = is_claimed_target (dir, claimed);
+        g_autofree char *found_in = NULL;
+        g_autoptr(GPtrArray) names = NULL;
+
+        if (is_skipped_path_dir (dir, dpkg))
+            continue;
+
+        if (scanned_dirs != NULL)
+            g_ptr_array_add (scanned_dirs, g_strdup (dir));
+        found_in = pretty_dir (dir);
+        names = list_dir (dir);
 
         for (guint i = 0; i < names->len; i++) {
             const char *name = g_ptr_array_index (names, i);
-            g_autofree char *host_path = g_build_filename (dirs[d], name, NULL);
+            g_autofree char *host_path = g_build_filename (dir, name, NULL);
             g_autofree char *target = NULL;
             g_autoptr(SrApp) probe = NULL;
+            const KnownTool *tool = find_known_tool (name);
             SrPackage *package;
 
             if (sr_dpkg_index_get_owner (dpkg, host_path) != NULL)
@@ -1112,10 +1295,16 @@ scan_loose_programs (GPtrArray *out, SrDpkgIndex *dpkg)
                 if (link == NULL)
                     continue;
                 target = g_path_is_absolute (link) ? g_canonicalize_filename (link, NULL)
-                                                   : g_canonicalize_filename (link, dirs[d]);
-                if (is_claimed_target (target, claimed))
-                    continue;
+                                                   : g_canonicalize_filename (link, dir);
             }
+
+            if (tool != NULL && host_is_file (host_path)) {
+                add_known_tool (out, tool, host_path, found_in);
+                continue;
+            }
+
+            if (dir_claimed || (target != NULL && is_claimed_target (target, claimed)))
+                continue;
 
             probe = sr_bundle_probe_binary (host_path);
             if (probe == NULL)
@@ -1123,6 +1312,7 @@ scan_loose_programs (GPtrArray *out, SrDpkgIndex *dpkg)
 
             package = add_package (out, SR_PACKAGE_MANAGER_MANUAL, NULL, name, NULL, probe->comment, host_path);
             package->icon = probe->icon != NULL ? g_object_ref (probe->icon) : NULL;
+            sr_package_add_detail (package, _("Found In"), found_in, TRUE);
             sr_package_add_detail (package, _("Points To"), target, TRUE);
             for (guint j = 0; j < probe->details->len; j++) {
                 SrDetail *detail = g_ptr_array_index (probe->details, j);
@@ -1133,7 +1323,8 @@ scan_loose_programs (GPtrArray *out, SrDpkgIndex *dpkg)
 }
 
 GPtrArray *
-sr_package_scanner_scan (SrDpkgIndex *dpkg, GCancellable *cancellable)
+sr_package_scanner_scan (SrDpkgIndex *dpkg, const char *const *path_dirs, GPtrArray *scanned_dirs,
+                         GCancellable *cancellable)
 {
     GPtrArray *out = g_ptr_array_new_with_free_func (g_object_unref);
     g_autoptr(GPtrArray) prefixes = g_ptr_array_new_with_free_func ((GDestroyNotify) node_prefix_free);
@@ -1146,12 +1337,14 @@ sr_package_scanner_scan (SrDpkgIndex *dpkg, GCancellable *cancellable)
     scan_node_versions (out, prefixes);
     scan_npm_globals (out, prefixes);
     scan_pnpm (out);
+    scan_yarn (out);
     scan_bun_deno (out);
+    scan_composer (out);
     scan_rust (out);
     scan_go (out);
     scan_python (out);
     scan_homebrew (out);
-    scan_loose_programs (out, dpkg);
+    scan_loose_programs (out, dpkg, path_dirs, scanned_dirs);
 
     return out;
 }
@@ -1170,6 +1363,8 @@ sr_package_scanner_get_watched_paths (void)
     g_ptr_array_add (paths, home_path (".local", "share", "pnpm", NULL));
     g_ptr_array_add (paths, home_path (".local", "share", "pnpm", "global", NULL));
     g_ptr_array_add (paths, home_path (".bun", "install", "global", NULL));
+    g_ptr_array_add (paths, home_path (".config", "yarn", "global", NULL));
+    g_ptr_array_add (paths, home_path (".config", "composer", "vendor", NULL));
     g_ptr_array_add (paths, home_path (".rustup", "toolchains", NULL));
     g_ptr_array_add (paths, home_path (".cargo", NULL));
     g_ptr_array_add (paths, home_path ("go", "bin", NULL));

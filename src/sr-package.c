@@ -115,6 +115,8 @@ manager_label (SrPackageManager manager)
         return "npm";
     case SR_PACKAGE_MANAGER_PNPM:
         return "pnpm";
+    case SR_PACKAGE_MANAGER_YARN:
+        return "yarn";
     case SR_PACKAGE_MANAGER_BUN:
         return "Bun";
     case SR_PACKAGE_MANAGER_DENO:
@@ -127,6 +129,8 @@ manager_label (SrPackageManager manager)
         return "Go";
     case SR_PACKAGE_MANAGER_PYTHON:
         return "pip";
+    case SR_PACKAGE_MANAGER_COMPOSER:
+        return "composer";
     case SR_PACKAGE_MANAGER_HOMEBREW:
         return "Homebrew";
     case SR_PACKAGE_MANAGER_MANUAL:
@@ -144,7 +148,13 @@ sr_package_get_pill (SrPackage *self)
 SrPackageGroup
 sr_package_get_group (SrPackage *self)
 {
-    switch (self->manager) {
+    return sr_package_manager_get_group (self->manager);
+}
+
+SrPackageGroup
+sr_package_manager_get_group (SrPackageManager manager)
+{
+    switch (manager) {
     case SR_PACKAGE_MANAGER_DEB:
         return SR_PACKAGE_GROUP_DEB;
     case SR_PACKAGE_MANAGER_SNAP:
@@ -154,6 +164,7 @@ sr_package_get_group (SrPackage *self)
     case SR_PACKAGE_MANAGER_NODE:
     case SR_PACKAGE_MANAGER_NPM:
     case SR_PACKAGE_MANAGER_PNPM:
+    case SR_PACKAGE_MANAGER_YARN:
     case SR_PACKAGE_MANAGER_BUN:
     case SR_PACKAGE_MANAGER_DENO:
         return SR_PACKAGE_GROUP_NODE;
@@ -164,6 +175,8 @@ sr_package_get_group (SrPackage *self)
         return SR_PACKAGE_GROUP_GO;
     case SR_PACKAGE_MANAGER_PYTHON:
         return SR_PACKAGE_GROUP_PYTHON;
+    case SR_PACKAGE_MANAGER_COMPOSER:
+        return SR_PACKAGE_GROUP_PHP;
     case SR_PACKAGE_MANAGER_HOMEBREW:
         return SR_PACKAGE_GROUP_HOMEBREW;
     case SR_PACKAGE_MANAGER_MANUAL:
@@ -190,6 +203,8 @@ sr_package_group_get_label (SrPackageGroup group)
         return _("Rust");
     case SR_PACKAGE_GROUP_GO:
         return _("Go");
+    case SR_PACKAGE_GROUP_PHP:
+        return _("PHP");
     case SR_PACKAGE_GROUP_HOMEBREW:
         return _("Homebrew");
     case SR_PACKAGE_GROUP_MANUAL:
@@ -210,6 +225,7 @@ sr_package_get_css_class (SrPackage *self)
         [SR_PACKAGE_GROUP_PYTHON] = "pkg-python",
         [SR_PACKAGE_GROUP_RUST] = "pkg-rust",
         [SR_PACKAGE_GROUP_GO] = "pkg-go",
+        [SR_PACKAGE_GROUP_PHP] = "pkg-php",
         [SR_PACKAGE_GROUP_HOMEBREW] = "pkg-homebrew",
         [SR_PACKAGE_GROUP_MANUAL] = "pkg-manual",
     };
@@ -233,6 +249,8 @@ sr_package_get_install_type (SrPackage *self)
         return _("npm global package");
     case SR_PACKAGE_MANAGER_PNPM:
         return _("pnpm");
+    case SR_PACKAGE_MANAGER_YARN:
+        return _("yarn global package");
     case SR_PACKAGE_MANAGER_BUN:
         return _("Bun");
     case SR_PACKAGE_MANAGER_DENO:
@@ -245,6 +263,8 @@ sr_package_get_install_type (SrPackage *self)
         return _("Go");
     case SR_PACKAGE_MANAGER_PYTHON:
         return _("Python package");
+    case SR_PACKAGE_MANAGER_COMPOSER:
+        return _("composer global package");
     case SR_PACKAGE_MANAGER_HOMEBREW:
         return _("Homebrew formula");
     case SR_PACKAGE_MANAGER_MANUAL:

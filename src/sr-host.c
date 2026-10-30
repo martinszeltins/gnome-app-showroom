@@ -11,6 +11,7 @@
 
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include "sr-host.h"
 
@@ -139,6 +140,88 @@ sr_host_find_program (const char *program)
     }
 
     return NULL;
+}
+
+static char *
+get_login_shell (void)
+{
+    g_autofree char *passwd_path = sr_host_to_sandbox_path ("/etc/passwd");
+    g_autofree char *contents = NULL;
+    g_autofree char *uid = g_strdup_printf ("%u", (guint) getuid ());
+    g_auto(GStrv) lines = NULL;
+
+    if (g_file_get_contents (passwd_path, &contents, NULL, NULL)) {
+        lines = g_strsplit (contents, "\n", -1);
+        for (guint i = 0; lines[i] != NULL; i++) {
+            g_auto(GStrv) fields = g_strsplit (lines[i], ":", 7);
+
+            if (g_strv_length (fields) == 7 && g_str_equal (fields[2], uid) && fields[6][0] == '/')
+                return g_strdup (fields[6]);
+        }
+    }
+
+    return g_strdup ("/bin/sh");
+}
+
+static void
+add_path_dirs (GStrvBuilder *builder, GHashTable *seen, const char *path)
+{
+    g_auto(GStrv) dirs = g_strsplit (path, ":", -1);
+
+    for (guint i = 0; dirs[i] != NULL; i++) {
+        g_autofree char *dir = g_canonicalize_filename (dirs[i], "/");
+
+        if (dirs[i][0] != '/' || g_hash_table_contains (seen, dir))
+            continue;
+
+        g_hash_table_add (seen, g_strdup (dir));
+        g_strv_builder_add (builder, dir);
+    }
+}
+
+/* PATH as the user's terminal sees it. Shell config files often add
+ * folders (version managers, ~/Scripts...) that the desktop session never
+ * gets, so ask an interactive login shell. */
+GStrv
+sr_host_get_user_path (GCancellable *cancellable)
+{
+    static const char *const marker = "__SR_PATH__";
+    g_autoptr(GStrvBuilder) builder = g_strv_builder_new ();
+    g_autoptr(GHashTable) seen = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+    g_autoptr(GSubprocess) proc = NULL;
+    g_autoptr(GError) error = NULL;
+    g_autofree char *shell = get_login_shell ();
+    g_autofree char *script = g_strdup_printf ("printf '%s%%s' \"$PATH\"", marker);
+    g_autofree char *output = NULL;
+    g_autofree char *local_bin = g_build_filename (g_get_home_dir (), ".local", "bin", NULL);
+    g_autofree char *home_bin = g_build_filename (g_get_home_dir (), "bin", NULL);
+    g_autofree char *fallback = NULL;
+    const char *found;
+
+    if (sr_host_is_sandboxed ())
+        proc = g_subprocess_new (G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_SILENCE, &error,
+                                 "flatpak-spawn", "--host", "timeout", "5", shell, "-lic", script, NULL);
+    else
+        proc = g_subprocess_new (G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_SILENCE, &error,
+                                 "timeout", "5", shell, "-lic", script, NULL);
+
+    if (proc != NULL && g_subprocess_communicate_utf8 (proc, NULL, cancellable, &output, NULL, &error)
+        && output != NULL && (found = strstr (output, marker)) != NULL) {
+        g_autofree char *path = g_strdup (found + strlen (marker));
+        char *newline = strchr (path, '\n');
+
+        if (newline != NULL)
+            *newline = '\0';
+        add_path_dirs (builder, seen, path);
+    } else {
+        g_debug ("Could not read PATH from %s: %s", shell, error != NULL ? error->message : "no output");
+    }
+
+    fallback = g_strjoin (":", local_bin, home_bin, "/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin",
+                          "/sbin", "/bin", "/usr/games", "/usr/local/games", "/snap/bin", NULL);
+    add_path_dirs (builder, seen, fallback);
+
+    return g_strv_builder_end (builder);
 }
 
 const char *const *

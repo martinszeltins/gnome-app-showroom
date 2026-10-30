@@ -77,6 +77,7 @@ gridview.app-grid > child {
 .source-pill.pkg-python { color: var(--yellow-5); }
 .source-pill.pkg-rust { color: var(--brown-3); }
 .source-pill.pkg-go { color: var(--blue-3); }
+.source-pill.pkg-php { color: var(--purple-3); }
 .source-pill.pkg-homebrew { color: var(--purple-4); }
 .source-pill.pkg-manual { color: var(--dark-1); }
 
@@ -93,8 +94,16 @@ gridview.app-grid > child {
   .source-pill.pkg-python { color: var(--yellow-2); }
   .source-pill.pkg-rust { color: var(--brown-1); }
   .source-pill.pkg-go { color: var(--blue-1); }
+  .source-pill.pkg-php { color: var(--purple-1); }
   .source-pill.pkg-homebrew { color: var(--purple-2); }
   .source-pill.pkg-manual { color: var(--light-4); }
+}
+
+.description-toggle {
+  padding-left: 0;
+  padding-right: 0;
+  margin-left: -2px;
+  color: var(--accent-color);
 }
 
 .details-header {

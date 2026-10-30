@@ -24,7 +24,7 @@ G_DEFINE_FINAL_TYPE (SrAppCard, sr_app_card, GTK_TYPE_BOX)
 
 static const char *const pill_classes[] = {
     "source-flatpak", "source-deb", "source-snap", "source-standalone", "source-other",
-    "pkg-deb", "pkg-snap", "pkg-flatpak", "pkg-node", "pkg-python", "pkg-rust", "pkg-go", "pkg-homebrew", "pkg-manual",
+    "pkg-deb", "pkg-snap", "pkg-flatpak", "pkg-node", "pkg-python", "pkg-rust", "pkg-go", "pkg-php", "pkg-homebrew", "pkg-manual",
 };
 
 static void

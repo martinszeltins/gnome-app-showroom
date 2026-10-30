@@ -41,6 +41,7 @@ sr_catalog_free (SrCatalog *catalog)
 
     g_clear_pointer (&catalog->apps, g_ptr_array_unref);
     g_clear_pointer (&catalog->packages, g_ptr_array_unref);
+    g_clear_pointer (&catalog->path_dirs, g_ptr_array_unref);
     g_free (catalog);
 }
 
@@ -225,6 +226,7 @@ load_thread (GTask *task, gpointer source_object, gpointer task_data, GCancellab
     g_autoptr(GPtrArray) apps = NULL;
     g_autoptr(GPtrArray) standalone = NULL;
     g_autoptr(GPtrArray) other_packages = NULL;
+    g_auto(GStrv) user_path = NULL;
     g_autoptr(SrCatalog) catalog = g_new0 (SrCatalog, 1);
     GPtrArray *packages;
 
@@ -247,7 +249,9 @@ load_thread (GTask *task, gpointer source_object, gpointer task_data, GCancellab
         sr_app_update_search_key (g_ptr_array_index (apps, i));
     g_ptr_array_sort (apps, compare_apps);
 
-    other_packages = sr_package_scanner_scan (dpkg, cancellable);
+    user_path = sr_host_get_user_path (cancellable);
+    catalog->path_dirs = g_ptr_array_new_with_free_func (g_free);
+    other_packages = sr_package_scanner_scan (dpkg, (const char *const *) user_path, catalog->path_dirs, cancellable);
     if (g_task_return_error_if_cancelled (task))
         return;
 

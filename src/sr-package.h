@@ -16,12 +16,14 @@ typedef enum {
     SR_PACKAGE_MANAGER_NODE,
     SR_PACKAGE_MANAGER_NPM,
     SR_PACKAGE_MANAGER_PNPM,
+    SR_PACKAGE_MANAGER_YARN,
     SR_PACKAGE_MANAGER_BUN,
     SR_PACKAGE_MANAGER_DENO,
     SR_PACKAGE_MANAGER_RUST,
     SR_PACKAGE_MANAGER_CARGO,
     SR_PACKAGE_MANAGER_GO,
     SR_PACKAGE_MANAGER_PYTHON,
+    SR_PACKAGE_MANAGER_COMPOSER,
     SR_PACKAGE_MANAGER_HOMEBREW,
     SR_PACKAGE_MANAGER_MANUAL,
 } SrPackageManager;
@@ -35,6 +37,7 @@ typedef enum {
     SR_PACKAGE_GROUP_PYTHON,
     SR_PACKAGE_GROUP_RUST,
     SR_PACKAGE_GROUP_GO,
+    SR_PACKAGE_GROUP_PHP,
     SR_PACKAGE_GROUP_HOMEBREW,
     SR_PACKAGE_GROUP_MANUAL,
     SR_N_PACKAGE_GROUPS,
@@ -92,6 +95,8 @@ const char *sr_package_get_css_class (SrPackage *self);
 const char *sr_package_get_install_type (SrPackage *self);
 
 SrPackageGroup sr_package_get_group (SrPackage *self);
+
+SrPackageGroup sr_package_manager_get_group (SrPackageManager manager);
 
 int sr_package_compare (gconstpointer a, gconstpointer b);
 

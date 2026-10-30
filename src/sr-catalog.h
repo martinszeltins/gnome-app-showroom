@@ -14,6 +14,8 @@ typedef struct {
     GPtrArray *apps;
     /* SrPackage, sorted by name */
     GPtrArray *packages;
+    /* Host paths of the PATH folders scanned for programs */
+    GPtrArray *path_dirs;
 } SrCatalog;
 
 void sr_catalog_free (SrCatalog *catalog);

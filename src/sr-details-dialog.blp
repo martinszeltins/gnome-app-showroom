@@ -96,10 +96,30 @@ template $SrDetailsDialog: Adw.Dialog {
           title: _("Description");
           visible: false;
 
-          Label description_label {
-            wrap: true;
-            xalign: 0;
-            selectable: true;
+          Box {
+            orientation: vertical;
+            spacing: 6;
+
+            Label description_label {
+              wrap: true;
+              wrap-mode: word_char;
+              lines: 2;
+              ellipsize: end;
+              xalign: 0;
+              selectable: true;
+            }
+
+            Button description_toggle {
+              label: _("Show More");
+              halign: start;
+              visible: false;
+              clicked => $on_description_toggle_clicked(template);
+
+              styles [
+                "flat",
+                "description-toggle",
+              ]
+            }
           }
         }
 

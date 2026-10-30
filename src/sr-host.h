@@ -23,6 +23,8 @@ gboolean sr_host_path_is_dir (const char *host_path);
 
 char *sr_host_find_program (const char *program);
 
+GStrv sr_host_get_user_path (GCancellable *cancellable);
+
 const char *const *sr_host_get_desktop_names (void);
 
 void sr_host_setup_icon_theme (GdkDisplay *display);

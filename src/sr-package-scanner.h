@@ -10,7 +10,8 @@
 
 G_BEGIN_DECLS
 
-GPtrArray *sr_package_scanner_scan (SrDpkgIndex *dpkg, GCancellable *cancellable);
+GPtrArray *sr_package_scanner_scan (SrDpkgIndex *dpkg, const char *const *path_dirs, GPtrArray *scanned_dirs,
+                                    GCancellable *cancellable);
 
 GPtrArray *sr_package_scanner_get_watched_paths (void);
 

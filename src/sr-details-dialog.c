@@ -28,6 +28,10 @@ struct _SrDetailsDialog {
     GtkButton *open_desktop_button;
     AdwPreferencesGroup *description_group;
     GtkLabel *description_label;
+    GtkButton *description_toggle;
+    gboolean description_expanded;
+    char *description;
+    char *description_collapsed;
     AdwPreferencesGroup *info_group;
     AdwPreferencesGroup *files_group;
     AdwExpanderRow *files_row;
@@ -189,12 +193,43 @@ on_files_expanded (SrDetailsDialog *self)
 }
 
 static void
+on_description_toggle_clicked (SrDetailsDialog *self)
+{
+    self->description_expanded = !self->description_expanded;
+
+    gtk_label_set_label (self->description_label,
+                         self->description_expanded ? self->description : self->description_collapsed);
+    gtk_label_set_lines (self->description_label, self->description_expanded ? -1 : 2);
+    gtk_label_set_ellipsize (self->description_label,
+                             self->description_expanded ? PANGO_ELLIPSIZE_NONE : PANGO_ELLIPSIZE_END);
+    gtk_button_set_label (self->description_toggle, self->description_expanded ? _("Show Less") : _("Show More"));
+}
+
+/* Whether the text is cut off is only known once the label has a width */
+static gboolean
+update_description_toggle_cb (GtkWidget *widget, GdkFrameClock *clock, gpointer user_data)
+{
+    SrDetailsDialog *self = SR_DETAILS_DIALOG (user_data);
+    PangoLayout *layout = gtk_label_get_layout (self->description_label);
+
+    if (gtk_widget_get_width (widget) == 0)
+        return G_SOURCE_CONTINUE;
+
+    gtk_widget_set_visible (GTK_WIDGET (self->description_toggle),
+                            self->description_expanded || pango_layout_is_ellipsized (layout));
+
+    return G_SOURCE_REMOVE;
+}
+
+static void
 sr_details_dialog_finalize (GObject *object)
 {
     SrDetailsDialog *self = SR_DETAILS_DIALOG (object);
 
     g_free (self->location);
     g_free (self->desktop_file);
+    g_free (self->description);
+    g_free (self->description_collapsed);
     g_clear_pointer (&self->files, g_ptr_array_unref);
 
     G_OBJECT_CLASS (sr_details_dialog_parent_class)->finalize (object);
@@ -218,6 +253,7 @@ sr_details_dialog_class_init (SrDetailsDialogClass *klass)
     gtk_widget_class_bind_template_child (widget_class, SrDetailsDialog, open_desktop_button);
     gtk_widget_class_bind_template_child (widget_class, SrDetailsDialog, description_group);
     gtk_widget_class_bind_template_child (widget_class, SrDetailsDialog, description_label);
+    gtk_widget_class_bind_template_child (widget_class, SrDetailsDialog, description_toggle);
     gtk_widget_class_bind_template_child (widget_class, SrDetailsDialog, info_group);
     gtk_widget_class_bind_template_child (widget_class, SrDetailsDialog, files_group);
     gtk_widget_class_bind_template_child (widget_class, SrDetailsDialog, files_row);
@@ -225,6 +261,7 @@ sr_details_dialog_class_init (SrDetailsDialogClass *klass)
     gtk_widget_class_bind_template_callback (widget_class, on_open_location_clicked);
     gtk_widget_class_bind_template_callback (widget_class, on_open_desktop_clicked);
     gtk_widget_class_bind_template_callback (widget_class, on_files_expanded);
+    gtk_widget_class_bind_template_callback (widget_class, on_description_toggle_clicked);
 }
 
 static void
@@ -256,8 +293,8 @@ sr_details_dialog_new_for_app (SrApp *app)
     self->desktop_file = g_strdup (app->desktop_file);
     update_buttons (self);
 
-    add_row (self, _("Installation Type"), app->install_type, FALSE);
     add_row (self, _("Location"), app->location, TRUE);
+    add_row (self, _("Installation Type"), app->install_type, FALSE);
     add_row (self, _("Desktop File"), app->desktop_file, TRUE);
     add_row_full (self, _("About the Desktop File"), app->desktop_file_note, FALSE, FALSE);
     add_row (self, _("Version"), app->version, FALSE);
@@ -292,8 +329,16 @@ sr_details_dialog_new_for_package (SrPackage *package)
     sr_pill_set (self->pill, sr_package_get_pill (package), sr_package_get_css_class (package));
 
     if (package->description != NULL) {
-        gtk_label_set_label (self->description_label, package->description);
+        g_autoptr(GRegex) whitespace = g_regex_new ("\\s+", 0, 0, NULL);
+
+        /* GtkLabel's line limit applies per paragraph, so the collapsed
+         * text is joined into a single paragraph */
+        self->description = g_strdup (package->description);
+        self->description_collapsed = g_regex_replace_literal (whitespace, package->description, -1, 0, " ", 0, NULL);
+        gtk_label_set_label (self->description_label, self->description_collapsed);
         gtk_widget_set_visible (GTK_WIDGET (self->description_group), TRUE);
+        gtk_widget_add_tick_callback (GTK_WIDGET (self->description_label), update_description_toggle_cb, self,
+                                      NULL);
     }
 
     self->location = g_strdup (package->location);
@@ -301,6 +346,7 @@ sr_details_dialog_new_for_package (SrPackage *package)
         self->desktop_file = g_strdup (g_ptr_array_index (package->desktop_files, 0));
     update_buttons (self);
 
+    add_row (self, _("Location"), package->location, TRUE);
     add_row (self, _("Installation Type"), sr_package_get_install_type (package), FALSE);
     if (package->manager != SR_PACKAGE_MANAGER_FLATPAK)
         add_row (self, _("Installed With"), package->manager_detail, FALSE);
@@ -314,8 +360,6 @@ sr_details_dialog_new_for_package (SrPackage *package)
     }
     add_row_full (self, _("Installed"),
                   package->auto_installed ? _("Automatically, as a dependency") : _("Manually"), FALSE, FALSE);
-    add_row (self, _("Location"), package->location, TRUE);
-
     for (guint i = 0; i < package->details->len; i++) {
         SrDetail *detail = g_ptr_array_index (package->details, i);
         add_row (self, detail->title, detail->value, detail->is_path);
