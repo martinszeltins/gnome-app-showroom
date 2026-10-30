@@ -207,6 +207,51 @@ sr_file_has_prefix_dir (const char *path, const char *dir)
     return strncmp (path, dir, len) == 0 && (path[len] == '/' || path[len] == '\0');
 }
 
+/* Reads a top-level "key: value" line, which is all the snap.yaml fields
+ * we need. Block scalars and nested keys are not supported. */
+char *
+sr_yaml_get_field (const char *yaml, const char *field)
+{
+    g_autofree char *prefix = g_strconcat (field, ":", NULL);
+    g_auto(GStrv) lines = g_strsplit (yaml, "\n", -1);
+
+    for (guint i = 0; lines[i] != NULL; i++) {
+        if (g_str_has_prefix (lines[i], prefix)) {
+            char *value = g_strstrip (g_strdup (lines[i] + strlen (prefix)));
+            gsize len = strlen (value);
+
+            if (len >= 2 && (value[0] == '\'' || value[0] == '"') && value[len - 1] == value[0]) {
+                memmove (value, value + 1, len - 2);
+                value[len - 2] = '\0';
+            }
+            if (*value == '\0' || g_str_equal (value, "|") || g_str_equal (value, ">")) {
+                g_free (value);
+                return NULL;
+            }
+            return value;
+        }
+    }
+
+    return NULL;
+}
+
+char *
+sr_read_first_line (const char *path)
+{
+    g_autofree char *contents = NULL;
+    char *newline;
+
+    if (!g_file_get_contents (path, &contents, NULL, NULL))
+        return NULL;
+
+    newline = strchr (contents, '\n');
+    if (newline != NULL)
+        *newline = '\0';
+    g_strstrip (contents);
+
+    return *contents != '\0' ? g_steal_pointer (&contents) : NULL;
+}
+
 char *
 sr_join_categories (const char *categories)
 {

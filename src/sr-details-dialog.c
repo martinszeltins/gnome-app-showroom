@@ -289,7 +289,7 @@ sr_details_dialog_new_for_package (SrPackage *package)
     g_autofree char *files_subtitle = NULL;
 
     set_header (self, package->icon, "package-x-generic", package->name, package->summary);
-    sr_pill_set (self->pill, sr_package_get_pill (package), "source-package");
+    sr_pill_set (self->pill, sr_package_get_pill (package), sr_package_get_css_class (package));
 
     if (package->description != NULL) {
         gtk_label_set_label (self->description_label, package->description);
@@ -301,7 +301,9 @@ sr_details_dialog_new_for_package (SrPackage *package)
         self->desktop_file = g_strdup (g_ptr_array_index (package->desktop_files, 0));
     update_buttons (self);
 
-    add_row (self, _("Installation Type"), _("Debian package"), FALSE);
+    add_row (self, _("Installation Type"), sr_package_get_install_type (package), FALSE);
+    if (package->manager != SR_PACKAGE_MANAGER_FLATPAK)
+        add_row (self, _("Installed With"), package->manager_detail, FALSE);
     add_row (self, _("Package"), package->name, FALSE);
     add_row (self, _("Version"), package->version, FALSE);
     add_row (self, _("Architecture"), package->arch, FALSE);
@@ -313,6 +315,11 @@ sr_details_dialog_new_for_package (SrPackage *package)
     add_row_full (self, _("Installed"),
                   package->auto_installed ? _("Automatically, as a dependency") : _("Manually"), FALSE, FALSE);
     add_row (self, _("Location"), package->location, TRUE);
+
+    for (guint i = 0; i < package->details->len; i++) {
+        SrDetail *detail = g_ptr_array_index (package->details, i);
+        add_row (self, detail->title, detail->value, detail->is_path);
+    }
 
     if (package->app_names->len > 0) {
         g_ptr_array_add (package->app_names, NULL);

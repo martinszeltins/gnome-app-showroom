@@ -19,12 +19,27 @@ G_DEFINE_FINAL_TYPE (SrApp, sr_app, G_TYPE_OBJECT)
 
 static const char *sr_source_get_pill_label (SrSource source);
 
-static void
+void
 sr_detail_free (SrDetail *detail)
 {
     g_free (detail->title);
     g_free (detail->value);
     g_free (detail);
+}
+
+void
+sr_details_add (GPtrArray *details, const char *title, const char *value, gboolean is_path)
+{
+    SrDetail *detail;
+
+    if (value == NULL || *value == '\0')
+        return;
+
+    detail = g_new0 (SrDetail, 1);
+    detail->title = g_strdup (title);
+    detail->value = g_strdup (value);
+    detail->is_path = is_path;
+    g_ptr_array_add (details, detail);
 }
 
 static void
@@ -75,16 +90,7 @@ sr_app_new (void)
 void
 sr_app_add_detail (SrApp *self, const char *title, const char *value, gboolean is_path)
 {
-    SrDetail *detail;
-
-    if (value == NULL || *value == '\0')
-        return;
-
-    detail = g_new0 (SrDetail, 1);
-    detail->title = g_strdup (title);
-    detail->value = g_strdup (value);
-    detail->is_path = is_path;
-    g_ptr_array_add (self->details, detail);
+    sr_details_add (self->details, title, value, is_path);
 }
 
 void

@@ -338,28 +338,6 @@ classify_flatpak (SrApp *app, GKeyFile *keyfile, DirKind kind)
     sr_app_add_detail (app, _("Installation"), user ? user_base : "/var/lib/flatpak", TRUE);
 }
 
-static char *
-read_snap_yaml_field (const char *snap_yaml, const char *field)
-{
-    g_autofree char *prefix = g_strconcat (field, ":", NULL);
-    g_auto(GStrv) lines = g_strsplit (snap_yaml, "\n", -1);
-
-    for (guint i = 0; lines[i] != NULL; i++) {
-        if (g_str_has_prefix (lines[i], prefix)) {
-            char *value = g_strstrip (g_strdup (lines[i] + strlen (prefix)));
-            gsize len = strlen (value);
-
-            if (len >= 2 && (value[0] == '\'' || value[0] == '"') && value[len - 1] == value[0]) {
-                memmove (value, value + 1, len - 2);
-                value[len - 2] = '\0';
-            }
-            return value;
-        }
-    }
-
-    return NULL;
-}
-
 static void
 classify_snap (SrApp *app, GKeyFile *keyfile)
 {
@@ -394,10 +372,10 @@ classify_snap (SrApp *app, GKeyFile *keyfile)
 
     yaml_path = g_build_filename (current_link, "meta", "snap.yaml", NULL);
     if (g_file_get_contents (yaml_path, &yaml, NULL, NULL)) {
-        g_autofree char *confinement = read_snap_yaml_field (yaml, "confinement");
-        g_autofree char *base = read_snap_yaml_field (yaml, "base");
+        g_autofree char *confinement = sr_yaml_get_field (yaml, "confinement");
+        g_autofree char *base = sr_yaml_get_field (yaml, "base");
 
-        app->version = read_snap_yaml_field (yaml, "version");
+        app->version = sr_yaml_get_field (yaml, "version");
         sr_app_add_detail (app, _("Confinement"), confinement, FALSE);
         sr_app_add_detail (app, _("Base"), base, FALSE);
     }

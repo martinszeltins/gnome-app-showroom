@@ -23,7 +23,8 @@ struct _SrAppCard {
 G_DEFINE_FINAL_TYPE (SrAppCard, sr_app_card, GTK_TYPE_BOX)
 
 static const char *const pill_classes[] = {
-    "source-flatpak", "source-deb", "source-snap", "source-standalone", "source-other", "source-package",
+    "source-flatpak", "source-deb", "source-snap", "source-standalone", "source-other",
+    "pkg-deb", "pkg-snap", "pkg-flatpak", "pkg-node", "pkg-python", "pkg-rust", "pkg-go", "pkg-homebrew", "pkg-manual",
 };
 
 static void
@@ -93,11 +94,19 @@ sr_app_card_set_app (SrAppCard *self, SrApp *app)
 void
 sr_app_card_set_package (SrAppCard *self, SrPackage *package)
 {
+    g_autofree char *subtitle = NULL;
+
+    if (package->manager != SR_PACKAGE_MANAGER_DEB && package->version != NULL)
+        subtitle = package->summary != NULL ? g_strdup_printf ("%s · %s", package->version, package->summary)
+                                            : g_strdup (package->version);
+    else
+        subtitle = g_strdup (package->summary);
+
     sr_image_set_icon (self->icon, package->icon, "package-x-generic");
     gtk_label_set_label (self->title, package->name);
-    gtk_label_set_label (self->subtitle, package->summary != NULL ? package->summary : "");
-    gtk_widget_set_visible (GTK_WIDGET (self->subtitle), package->summary != NULL);
-    sr_pill_set (self->pill, sr_package_get_pill (package), "source-package");
+    gtk_label_set_label (self->subtitle, subtitle != NULL ? subtitle : "");
+    gtk_widget_set_visible (GTK_WIDGET (self->subtitle), subtitle != NULL);
+    sr_pill_set (self->pill, sr_package_get_pill (package), sr_package_get_css_class (package));
 
     gtk_widget_set_tooltip_text (GTK_WIDGET (self), package->summary);
     gtk_accessible_update_property (GTK_ACCESSIBLE (self), GTK_ACCESSIBLE_PROPERTY_LABEL, package->name,

@@ -410,10 +410,12 @@ sr_dpkg_index_get_owner (SrDpkgIndex *self, const char *host_path)
 static const char *
 heuristic_icon_name (SrPackage *package)
 {
-    const char *section = sr_package_get_pill (package);
+    const char *section = package->section != NULL ? package->section : "";
+    const char *slash = strrchr (section, '/');
 
-    if (section == NULL)
-        section = "";
+    /* "universe/libs" -> "libs" */
+    if (slash != NULL)
+        section = slash + 1;
 
     if (g_str_has_prefix (package->name, "fonts-") || g_str_equal (section, "fonts"))
         return "font-x-generic";

@@ -168,6 +168,11 @@ template $SrWindow: Adw.ApplicationWindow {
                     }
                   }
 
+                  DropDown package_source {
+                    tooltip-text: _("Package Source");
+                    notify::selected => $on_package_filter_changed(template);
+                  }
+
                   Label packages_count {
                     hexpand: true;
                     xalign: 1;

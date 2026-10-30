@@ -7,6 +7,7 @@ src/sr-app-scanner.c
 src/sr-details-dialog.blp
 src/sr-details-dialog.c
 src/sr-package.c
+src/sr-package-scanner.c
 src/sr-standalone-scanner.c
 src/sr-window.blp
 src/sr-window.c

@@ -24,6 +24,10 @@ typedef struct {
     gboolean is_path;
 } SrDetail;
 
+void sr_detail_free (SrDetail *detail);
+
+void sr_details_add (GPtrArray *details, const char *title, const char *value, gboolean is_path);
+
 #define SR_TYPE_APP (sr_app_get_type ())
 G_DECLARE_FINAL_TYPE (SrApp, sr_app, SR, APP, GObject)
 

@@ -15,6 +15,7 @@
 #include "sr-catalog.h"
 #include "sr-dpkg-index.h"
 #include "sr-host.h"
+#include "sr-package-scanner.h"
 #include "sr-package.h"
 #include "sr-standalone-scanner.h"
 #include "sr-utils.h"
@@ -119,6 +120,103 @@ compare_apps (gconstpointer a, gconstpointer b)
     return sr_app_compare (*(SrApp **) a, *(SrApp **) b, NULL);
 }
 
+typedef struct {
+    GHashTable *deb_packages;
+    GHashTable *snaps;
+    GHashTable *flatpaks;
+    GHashTable *paths;
+    GPtrArray *roots;
+} ShownApps;
+
+static void
+shown_apps_clear (ShownApps *shown)
+{
+    g_clear_pointer (&shown->deb_packages, g_hash_table_unref);
+    g_clear_pointer (&shown->snaps, g_hash_table_unref);
+    g_clear_pointer (&shown->flatpaks, g_hash_table_unref);
+    g_clear_pointer (&shown->paths, g_hash_table_unref);
+    g_clear_pointer (&shown->roots, g_ptr_array_unref);
+}
+
+static void
+collect_shown_apps (GPtrArray *apps, ShownApps *shown)
+{
+    shown->deb_packages = g_hash_table_new (g_str_hash, g_str_equal);
+    shown->snaps = g_hash_table_new (g_str_hash, g_str_equal);
+    shown->flatpaks = g_hash_table_new (g_str_hash, g_str_equal);
+    shown->paths = g_hash_table_new (g_str_hash, g_str_equal);
+    shown->roots = g_ptr_array_new ();
+
+    for (guint i = 0; i < apps->len; i++) {
+        SrApp *app = g_ptr_array_index (apps, i);
+
+        if (app->source == SR_SOURCE_DEB && app->package != NULL)
+            g_hash_table_add (shown->deb_packages, app->package);
+        if (app->source == SR_SOURCE_SNAP && app->portal_app_id != NULL
+            && g_str_has_prefix (app->portal_app_id, "snap."))
+            g_hash_table_add (shown->snaps, app->portal_app_id + strlen ("snap."));
+        if (app->source == SR_SOURCE_FLATPAK && app->portal_app_id != NULL)
+            g_hash_table_add (shown->flatpaks, app->portal_app_id);
+        if (app->location != NULL)
+            g_hash_table_add (shown->paths, app->location);
+        if (app->standalone_root != NULL)
+            g_ptr_array_add (shown->roots, app->standalone_root);
+    }
+}
+
+static gboolean
+is_shown_as_app (SrPackage *package, ShownApps *shown)
+{
+    switch (package->manager) {
+    case SR_PACKAGE_MANAGER_DEB:
+        return g_hash_table_contains (shown->deb_packages, package->name);
+    case SR_PACKAGE_MANAGER_SNAP:
+        return g_hash_table_contains (shown->snaps, package->name);
+    case SR_PACKAGE_MANAGER_FLATPAK:
+        return package->is_app && g_hash_table_contains (shown->flatpaks, package->name);
+    default:
+        break;
+    }
+
+    if (package->location == NULL)
+        return FALSE;
+
+    if (g_hash_table_contains (shown->paths, package->location))
+        return TRUE;
+
+    for (guint i = 0; i < shown->roots->len; i++) {
+        if (sr_file_has_prefix_dir (package->location, g_ptr_array_index (shown->roots, i)))
+            return TRUE;
+    }
+
+    return FALSE;
+}
+
+/* Installed Packages lists what the app categories don't already show */
+static GPtrArray *
+build_package_list (GPtrArray *apps, GPtrArray *debs, GPtrArray *others)
+{
+    GPtrArray *packages = g_ptr_array_new_with_free_func (g_object_unref);
+    GPtrArray *sources[] = { debs, others };
+    ShownApps shown = { 0 };
+
+    collect_shown_apps (apps, &shown);
+
+    for (guint s = 0; s < G_N_ELEMENTS (sources); s++) {
+        for (guint i = 0; i < sources[s]->len; i++) {
+            SrPackage *package = g_ptr_array_index (sources[s], i);
+
+            if (!is_shown_as_app (package, &shown))
+                g_ptr_array_add (packages, g_object_ref (package));
+        }
+    }
+
+    shown_apps_clear (&shown);
+    g_ptr_array_sort (packages, sr_package_compare);
+
+    return packages;
+}
+
 static void
 load_thread (GTask *task, gpointer source_object, gpointer task_data, GCancellable *cancellable)
 {
@@ -126,6 +224,7 @@ load_thread (GTask *task, gpointer source_object, gpointer task_data, GCancellab
     g_autoptr(SrDpkgIndex) dpkg = NULL;
     g_autoptr(GPtrArray) apps = NULL;
     g_autoptr(GPtrArray) standalone = NULL;
+    g_autoptr(GPtrArray) other_packages = NULL;
     g_autoptr(SrCatalog) catalog = g_new0 (SrCatalog, 1);
     GPtrArray *packages;
 
@@ -148,13 +247,17 @@ load_thread (GTask *task, gpointer source_object, gpointer task_data, GCancellab
         sr_app_update_search_key (g_ptr_array_index (apps, i));
     g_ptr_array_sort (apps, compare_apps);
 
+    other_packages = sr_package_scanner_scan (dpkg, cancellable);
+    if (g_task_return_error_if_cancelled (task))
+        return;
+
     sr_dpkg_index_finish_icons (dpkg);
-    packages = sr_dpkg_index_get_packages (dpkg);
+    packages = build_package_list (apps, sr_dpkg_index_get_packages (dpkg), other_packages);
     for (guint i = 0; i < packages->len; i++)
         sr_package_update_search_key (g_ptr_array_index (packages, i));
 
     catalog->apps = g_steal_pointer (&apps);
-    catalog->packages = g_ptr_array_ref (packages);
+    catalog->packages = packages;
 
     g_task_return_pointer (task, g_steal_pointer (&catalog), (GDestroyNotify) sr_catalog_free);
 }
@@ -197,6 +300,19 @@ sr_catalog_get_watched_paths (const char *const *standalone_dirs, const char *co
         g_ptr_array_add (paths, sr_host_to_sandbox_path (appimage_only[i]));
 
     g_ptr_array_add (paths, g_strdup ("/var/lib/dpkg/status"));
+    g_ptr_array_extend_and_steal (paths, sr_package_scanner_get_watched_paths ());
+
+    for (guint i = 0; i < paths->len;) {
+        gboolean duplicate = FALSE;
+
+        for (guint j = 0; j < i && !duplicate; j++)
+            duplicate = g_str_equal (g_ptr_array_index (paths, i), g_ptr_array_index (paths, j));
+
+        if (duplicate)
+            g_ptr_array_remove_index (paths, i);
+        else
+            i++;
+    }
 
     return paths;
 }

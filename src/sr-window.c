@@ -47,6 +47,7 @@ struct _SrWindow {
     GtkStack *stack;
     GtkBox *sections_box;
     AdwToggleGroup *package_filter;
+    GtkDropDown *package_source;
     GtkLabel *packages_count;
     GtkGridView *package_grid;
     AdwStatusPage *empty_page;
@@ -58,7 +59,12 @@ struct _SrWindow {
     GtkFilter *search_filter;
     GtkFilter *package_search_filter;
     GtkFilter *manual_filter;
+    /* SrPackageGroup for each dropdown entry, -1 for all sources */
+    GArray *source_groups;
+    int selected_group;
+    gboolean updating_sources;
     GtkFilterListModel *package_view_model;
+    GtkSortListModel *package_page_model;
     /* Packages matching the search, shown on the All Apps page */
     GtkFilterListModel *package_matches;
     GtkSliceListModel *package_preview;
@@ -124,10 +130,60 @@ manual_filter_func (gpointer item, gpointer user_data)
 {
     SrWindow *self = SR_WINDOW (user_data);
 
+    SrPackage *package = SR_PACKAGE (item);
+
+    if (self->selected_group >= 0 && (int) sr_package_get_group (package) != self->selected_group)
+        return FALSE;
+
     if (g_strcmp0 (adw_toggle_group_get_active_name (self->package_filter), "manual") != 0)
         return TRUE;
 
-    return !SR_PACKAGE (item)->auto_installed;
+    return !package->auto_installed;
+}
+
+/* Rebuilds the source dropdown with per-source counts, hiding sources
+ * with nothing installed and keeping the current choice when possible */
+static void
+update_package_sources (SrWindow *self)
+{
+    guint counts[SR_N_PACKAGE_GROUPS] = { 0 };
+    guint n_packages = g_list_model_get_n_items (G_LIST_MODEL (self->packages));
+    g_autoptr(GtkStringList) strings = gtk_string_list_new (NULL);
+    g_autofree char *all = NULL;
+    guint selected = 0;
+
+    for (guint i = 0; i < n_packages; i++) {
+        g_autoptr(SrPackage) package = g_list_model_get_item (G_LIST_MODEL (self->packages), i);
+        counts[sr_package_get_group (package)]++;
+    }
+
+    g_array_set_size (self->source_groups, 0);
+
+    all = g_strdup_printf (_("All Sources (%u)"), n_packages);
+    gtk_string_list_append (strings, all);
+    g_array_append_val (self->source_groups, (int) { -1 });
+
+    for (int group = 0; group < SR_N_PACKAGE_GROUPS; group++) {
+        g_autofree char *label = NULL;
+
+        if (counts[group] == 0)
+            continue;
+
+        if (group == self->selected_group)
+            selected = self->source_groups->len;
+
+        label = g_strdup_printf ("%s (%u)", sr_package_group_get_label (group), counts[group]);
+        gtk_string_list_append (strings, label);
+        g_array_append_val (self->source_groups, group);
+    }
+
+    if (selected == 0)
+        self->selected_group = -1;
+
+    self->updating_sources = TRUE;
+    gtk_drop_down_set_model (self->package_source, G_LIST_MODEL (strings));
+    gtk_drop_down_set_selected (self->package_source, selected);
+    self->updating_sources = FALSE;
 }
 
 static void
@@ -334,6 +390,7 @@ static void
 show_all_packages_clicked_cb (GtkButton *button, SrWindow *self)
 {
     adw_toggle_group_set_active_name (self->package_filter, "all");
+    gtk_drop_down_set_selected (self->package_source, 0);
     select_page (self, PAGE_PACKAGES);
 }
 
@@ -362,8 +419,10 @@ package_relevance_func (gconstpointer a, gconstpointer b, gpointer user_data)
 
     if (ra != rb)
         return ra < rb ? GTK_ORDERING_SMALLER : GTK_ORDERING_LARGER;
+    if (self->query != NULL && *self->query != '\0' && pa->is_default != pb->is_default)
+        return pa->is_default ? GTK_ORDERING_SMALLER : GTK_ORDERING_LARGER;
 
-    return gtk_ordering_from_cmpfunc (strcmp (pa->name, pb->name));
+    return gtk_ordering_from_cmpfunc (sr_package_compare (&pa, &pb));
 }
 
 static void
@@ -451,7 +510,9 @@ build_packages (SrWindow *self)
     g_signal_connect (factory, "setup", G_CALLBACK (package_setup_cb), NULL);
     g_signal_connect (factory, "bind", G_CALLBACK (package_bind_cb), NULL);
 
-    selection = gtk_no_selection_new (g_object_ref (G_LIST_MODEL (self->package_view_model)));
+    self->package_page_model = gtk_sort_list_model_new (g_object_ref (G_LIST_MODEL (self->package_view_model)),
+                                                        g_object_ref (self->package_relevance_sorter));
+    selection = gtk_no_selection_new (g_object_ref (G_LIST_MODEL (self->package_page_model)));
     gtk_grid_view_set_model (self->package_grid, GTK_SELECTION_MODEL (selection));
     gtk_grid_view_set_factory (self->package_grid, factory);
     g_object_unref (selection);
@@ -620,6 +681,8 @@ on_search_changed (SrWindow *self)
     gtk_filter_changed (self->search_filter, GTK_FILTER_CHANGE_DIFFERENT);
     gtk_filter_changed (self->package_search_filter, GTK_FILTER_CHANGE_DIFFERENT);
     gtk_sorter_changed (self->package_relevance_sorter, GTK_SORTER_CHANGE_DIFFERENT);
+    if (g_list_model_get_n_items (G_LIST_MODEL (self->package_page_model)) > 0)
+        gtk_grid_view_scroll_to (self->package_grid, 0, GTK_LIST_SCROLL_NONE, NULL);
     update_view (self);
 }
 
@@ -640,7 +703,7 @@ static void
 on_search_activated (SrWindow *self)
 {
     if (is_packages_page (self)) {
-        g_autoptr(SrPackage) package = g_list_model_get_item (G_LIST_MODEL (self->package_view_model), 0);
+        g_autoptr(SrPackage) package = g_list_model_get_item (G_LIST_MODEL (self->package_page_model), 0);
 
         if (package != NULL)
             show_package_details (self, package);
@@ -672,14 +735,24 @@ on_search_activated (SrWindow *self)
 static void
 on_package_filter_changed (SrWindow *self)
 {
-    if (self->manual_filter != NULL)
-        gtk_filter_changed (self->manual_filter, GTK_FILTER_CHANGE_DIFFERENT);
+    guint selected;
+
+    if (self->updating_sources || self->manual_filter == NULL)
+        return;
+
+    selected = gtk_drop_down_get_selected (self->package_source);
+    if (self->source_groups != NULL && selected < self->source_groups->len)
+        self->selected_group = g_array_index (self->source_groups, int, selected);
+    else
+        self->selected_group = -1;
+
+    gtk_filter_changed (self->manual_filter, GTK_FILTER_CHANGE_DIFFERENT);
 }
 
 static void
 on_package_activated (SrWindow *self, guint position)
 {
-    g_autoptr(SrPackage) package = g_list_model_get_item (G_LIST_MODEL (self->package_view_model), position);
+    g_autoptr(SrPackage) package = g_list_model_get_item (G_LIST_MODEL (self->package_page_model), position);
 
     if (package != NULL)
         show_package_details (self, package);
@@ -712,6 +785,8 @@ catalog_loaded_cb (GObject *source, GAsyncResult *result, gpointer user_data)
 
     splice_store (self->apps, catalog->apps);
     splice_store (self->packages, catalog->packages);
+    update_package_sources (self);
+    gtk_filter_changed (self->manual_filter, GTK_FILTER_CHANGE_DIFFERENT);
     self->loaded = TRUE;
     update_view (self);
 
@@ -836,6 +911,7 @@ sr_window_dispose (GObject *object)
         g_clear_object (&self->sections[i].source_model);
         g_clear_object (&self->sections[i].view_model);
     }
+    g_clear_object (&self->package_page_model);
     g_clear_object (&self->package_view_model);
     g_clear_object (&self->package_preview);
     g_clear_object (&self->package_matches);
@@ -858,6 +934,7 @@ sr_window_finalize (GObject *object)
     g_clear_object (&self->search_filter);
     g_clear_object (&self->package_search_filter);
     g_clear_object (&self->manual_filter);
+    g_clear_pointer (&self->source_groups, g_array_unref);
     g_free (self->query);
     g_free (self->page);
 
@@ -882,6 +959,7 @@ sr_window_class_init (SrWindowClass *klass)
     gtk_widget_class_bind_template_child (widget_class, SrWindow, stack);
     gtk_widget_class_bind_template_child (widget_class, SrWindow, sections_box);
     gtk_widget_class_bind_template_child (widget_class, SrWindow, package_filter);
+    gtk_widget_class_bind_template_child (widget_class, SrWindow, package_source);
     gtk_widget_class_bind_template_child (widget_class, SrWindow, packages_count);
     gtk_widget_class_bind_template_child (widget_class, SrWindow, package_grid);
     gtk_widget_class_bind_template_child (widget_class, SrWindow, empty_page);
@@ -912,6 +990,8 @@ sr_window_init (SrWindow *self)
     self->packages = g_list_store_new (SR_TYPE_PACKAGE);
     self->search_filter = GTK_FILTER (gtk_custom_filter_new (search_filter_func, self, NULL));
     self->package_search_filter = GTK_FILTER (gtk_custom_filter_new (package_search_filter_func, self, NULL));
+    self->source_groups = g_array_new (FALSE, FALSE, sizeof (int));
+    self->selected_group = -1;
 
     gtk_widget_init_template (GTK_WIDGET (self));
 
@@ -926,6 +1006,7 @@ sr_window_init (SrWindow *self)
     build_sections (self);
     build_package_matches (self);
     build_packages (self);
+    update_package_sources (self);
 
     /* Typing anywhere in the window starts a search */
     gtk_search_bar_set_key_capture_widget (self->search_bar, GTK_WIDGET (self));

@@ -27,4 +27,8 @@ gboolean sr_file_has_prefix_dir (const char *path, const char *dir);
 
 char *sr_join_categories (const char *categories);
 
+char *sr_yaml_get_field (const char *yaml, const char *field);
+
+char *sr_read_first_line (const char *path);
+
 G_END_DECLS

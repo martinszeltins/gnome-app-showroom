@@ -33,6 +33,7 @@ sources = files(
   'sr-dpkg-index.c',
   'sr-host.c',
   'sr-package.c',
+  'sr-package-scanner.c',
   'sr-standalone-scanner.c',
   'sr-utils.c',
   'sr-window.c',

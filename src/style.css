@@ -70,7 +70,15 @@ gridview.app-grid > child {
 .source-pill.source-snap { color: var(--orange-5); }
 .source-pill.source-standalone { color: var(--purple-4); }
 .source-pill.source-other { color: var(--dark-1); }
-.source-pill.source-package { color: var(--green-5); }
+.source-pill.pkg-deb { color: var(--red-4); }
+.source-pill.pkg-snap { color: var(--orange-5); }
+.source-pill.pkg-flatpak { color: var(--blue-4); }
+.source-pill.pkg-node { color: var(--green-5); }
+.source-pill.pkg-python { color: var(--yellow-5); }
+.source-pill.pkg-rust { color: var(--brown-3); }
+.source-pill.pkg-go { color: var(--blue-3); }
+.source-pill.pkg-homebrew { color: var(--purple-4); }
+.source-pill.pkg-manual { color: var(--dark-1); }
 
 @media (prefers-color-scheme: dark) {
   .source-pill.source-flatpak { color: var(--blue-2); }
@@ -78,7 +86,15 @@ gridview.app-grid > child {
   .source-pill.source-snap { color: var(--orange-2); }
   .source-pill.source-standalone { color: var(--purple-2); }
   .source-pill.source-other { color: var(--light-4); }
-  .source-pill.source-package { color: var(--green-2); }
+  .source-pill.pkg-deb { color: var(--red-1); }
+  .source-pill.pkg-snap { color: var(--orange-2); }
+  .source-pill.pkg-flatpak { color: var(--blue-2); }
+  .source-pill.pkg-node { color: var(--green-2); }
+  .source-pill.pkg-python { color: var(--yellow-2); }
+  .source-pill.pkg-rust { color: var(--brown-1); }
+  .source-pill.pkg-go { color: var(--blue-1); }
+  .source-pill.pkg-homebrew { color: var(--purple-2); }
+  .source-pill.pkg-manual { color: var(--light-4); }
 }
 
 .details-header {

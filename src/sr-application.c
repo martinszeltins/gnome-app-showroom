@@ -143,7 +143,8 @@ print_catalog (SrCatalog *catalog, gboolean with_packages)
         SrPackage *package = g_ptr_array_index (catalog->packages, i);
         g_autofree char *icon = package->icon != NULL ? g_icon_to_string (package->icon) : NULL;
 
-        g_print ("  %-40s %-28s %s  %s\n", package->name, package->version ? package->version : "",
+        g_print ("  %-14s %-40s %-28s %s%s  %s\n", sr_package_get_pill (package), package->name,
+                 package->version ? package->version : "", package->is_default ? "(default) " : "",
                  package->location ? package->location : "-", icon ? icon : "-");
     }
 }
