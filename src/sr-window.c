@@ -90,6 +90,7 @@ G_DEFINE_FINAL_TYPE (SrWindow, sr_window, ADW_TYPE_APPLICATION_WINDOW)
 static void update_view (SrWindow *self);
 static void load_catalog (SrWindow *self);
 static void select_page (SrWindow *self, const char *page);
+static void on_search_changed (SrWindow *self);
 
 static gboolean
 is_packages_page (SrWindow *self)
@@ -666,8 +667,13 @@ on_sidebar_row_activated (SrWindow *self, GtkListBoxRow *row)
 
     g_set_str (&self->page, page);
     g_settings_set_string (self->settings, "last-page", page);
+
+    /* search-changed is delayed, so apply the cleared query right away */
+    gtk_editable_set_text (GTK_EDITABLE (self->search_entry), "");
+    gtk_search_bar_set_search_mode (self->search_bar, FALSE);
+    on_search_changed (self);
+
     adw_navigation_split_view_set_show_content (self->split_view, TRUE);
-    update_view (self);
 }
 
 static void

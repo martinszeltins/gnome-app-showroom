@@ -173,8 +173,14 @@ scan_list_file (SrDpkgIndex *self, SrPackage *package, GCancellable *cancellable
         if (is_direct_child (line, "/usr/bin") || is_direct_child (line, "/usr/sbin") || is_direct_child (line, "/bin")
             || is_direct_child (line, "/sbin") || is_direct_child (line, "/usr/games")) {
             package->has_binaries = TRUE;
-            if (scan.bin == NULL)
+            /* A package can ship several programs (gcc ships c89-gcc first),
+             * so the one named after the package wins */
+            if (g_str_equal (strrchr (line, '/') + 1, package->name)) {
+                g_free (scan.bin);
                 scan.bin = g_strdup (line);
+            } else if (scan.bin == NULL) {
+                scan.bin = g_strdup (line);
+            }
             g_hash_table_insert (self->owners, g_strdup (line), package);
             continue;
         }
@@ -359,6 +365,16 @@ sr_dpkg_index_load (GCancellable *cancellable)
         if (g_cancellable_is_cancelled (cancellable))
             return NULL;
         scan_list_file (self, g_ptr_array_index (self->packages, i), cancellable);
+    }
+
+    /* Show what `which <package>` finds, as long as dpkg installed it, even
+     * when another package owns it (python3 -> python3-minimal) */
+    for (guint i = 0; i < self->packages->len; i++) {
+        SrPackage *package = g_ptr_array_index (self->packages, i);
+        g_autofree char *program = sr_host_find_program (package->name);
+
+        if (program != NULL && sr_dpkg_index_get_owner (self, program) != NULL)
+            g_set_str (&package->location, program);
     }
 
     return g_steal_pointer (&self);
